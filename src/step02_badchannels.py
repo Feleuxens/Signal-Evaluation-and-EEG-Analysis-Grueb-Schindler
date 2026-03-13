@@ -3,7 +3,6 @@ from mne.io.edf.edf import RawEDF
 
 
 BAD_CHANNEL_Z_THRESH = 3.0  # z-score threshold for bad channel detection
-EXG_PREFIX = "EXG"  # Prefix for external channels to exclude from EEG analysis
 STATUS_PREFIX = "Status"  # Prefix for status channels to exclude from EEG analysis
 
 
@@ -16,8 +15,7 @@ def detect_bad_channels(raw: RawEDF) -> RawEDF:
     eeg_picks = [
         i
         for i, ch in enumerate(channel_names)
-        if not ch.upper().startswith(EXG_PREFIX)
-        and not ch.startswith(STATUS_PREFIX)
+        if  not ch.startswith(STATUS_PREFIX)
         and raw.get_channel_types()[i] == "eeg"
     ]
 
