@@ -1,0 +1,30 @@
+[bad_channels]
+enabled = false
+
+[filtering]
+enabled = false
+
+[downsampling]
+enabled = true
+target_sfreq = 128
+npad = "auto"
+
+[rereferencing]
+enabled = false
+
+[asr]
+enabled = false
+
+[ica]
+enabled = false
+
+[interpolation]
+enabled = false
+
+[epoching]
+epochrange_tmin = -0.5
+epochrange_tmax = 1.0
+baseline = [-0.25, 0.0]
+
+[trial_rejection]
+enabled = false

@@ -1,0 +1,39 @@
+[bad_channels]
+enabled = false
+
+[filtering]
+enabled = true
+pass_filter_enabled = true
+low_pass = 40.0
+high_pass = 0.1
+pass_filter_method = "firwin"
+pass_filter_pick = "eeg"
+notch_filter_enabled = true
+notch_frequencies = [50, 100, 150, 200]
+notch_filter_method = "spectrum_fit"
+notch_filter_pick = "eeg"
+
+[downsampling]
+enabled = true
+target_sfreq = 128
+npad = "auto"
+
+[rereferencing]
+enabled = false
+
+[asr]
+enabled = false
+
+[ica]
+enabled = false
+
+[interpolation]
+enabled = false
+
+[epoching]
+epochrange_tmin = -0.5
+epochrange_tmax = 1.0
+baseline = [-0.25, 0.0]
+
+[trial_rejection]
+enabled = false
