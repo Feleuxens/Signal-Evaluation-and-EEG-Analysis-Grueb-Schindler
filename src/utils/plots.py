@@ -1,4 +1,8 @@
+import os
+from typing import Any
+
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from mne import Evoked
 import mne
 import numpy as np
@@ -6,16 +10,17 @@ import numpy as np
 from utils.utils import evoke_channels
 
 
-def power_spectral_density_plot(raw, fmin, fmax):
+def power_spectral_density_plot(output_file, raw, fmin, fmax):
     # Sensor-level PSD (Welch) — full-band and zoomed alpha/beta
     fig_psd = raw.compute_psd(method="welch", fmin=fmin, fmax=fmax, n_fft=2048).plot(
         average=True, picks="eeg", show=False
     )
     fig_psd.suptitle(f"Sensor PSD ({fmin}-{fmax} Hz)")
-    plt.show()
+    # plt.show()
+    plt.savefig(output_file, bbox_inches="tight")
 
 
-def ica_topography_plot(ica, raw):
+def ica_topography_plot(output_file, ica, raw):
     if ica is None:
         return
 
@@ -27,10 +32,17 @@ def ica_topography_plot(ica, raw):
     ica.fit(raw_no_exg)
 
     comp_picks = list(range(min(20, ica.n_components_)))
-    ica.plot_components(picks=comp_picks, inst=raw_no_exg)
+    figures: list[Figure] | Any = ica.plot_components(
+        picks=comp_picks, inst=raw_no_exg, show=False
+    )
+    if isinstance(figures, list):
+        for index, fig in enumerate(figures):
+            fig.savefig(output_file + str(index) + ".png", bbox_inches="tight")
+    if isinstance(figures, Figure):
+        figures.savefig(output_file + ".png", bbox_inches="tight")
 
 
-def one_channel_erp_plot(raw, epochs, baseline):
+def one_channel_erp_plot(output_file, raw, epochs, baseline):
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # choose channel
@@ -60,10 +72,11 @@ def one_channel_erp_plot(raw, epochs, baseline):
     plt.ylabel("Amplitude (µV)")
     plt.title(f"ERP at {preferred}")
     plt.legend()
-    plt.show()
+    # plt.show()
+    plt.savefig(output_file, bbox_inches="tight")
 
 
-def all_channel_erp_plot(epochs, baseline):
+def all_channel_erp_plot(output_file, epochs, baseline):
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # For type checking reasons
@@ -85,7 +98,8 @@ def all_channel_erp_plot(epochs, baseline):
     plt.ylabel("Amplitude (µV)")
     plt.legend()
     plt.title("Mean across channels — Random vs Regular")
-    plt.show()
+    # plt.show()
+    plt.savefig(output_file, bbox_inches="tight")
 
 
 def unprocessed_vs_processed_plot(raw_unprocessed, raw):
@@ -185,28 +199,36 @@ def unprocessed_vs_processed_plot(raw_unprocessed, raw):
     #
 
 
-def butterfly_plot(epochs):
+def butterfly_plot(output_file, epochs):
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # Butterfly plot for evoked difference or single condition
-    evoked_random.plot(
+    figure: Figure = evoked_random.plot(
         spatial_colors=False,
-        show=True,
+        show=False,
         time_unit="s",
         titles=f"Butterfly — Random",
     )
+    figure.savefig(output_file + "_random.png", bbox_inches="tight")
     # Alternatively plot difference
     evoked_diff = mne.combine_evoked([evoked_random, evoked_regular], weights=[1, -1])
-    evoked_diff.plot(
+    figure: Figure = evoked_diff.plot(
         spatial_colors=False,
-        show=True,
+        show=False,
         time_unit="s",
         titles=f"Butterfly — Random-Regular diff",
     )
+    figure.savefig(output_file + "_combined.png", bbox_inches="tight")
 
 
 def plot_channel(
-    channel, data_random, data_regular, times, n_subjects, bids_root="../data/"
+    output_file,
+    channel,
+    data_random,
+    data_regular,
+    times,
+    n_subjects,
+    bids_root="../data/",
 ):
     processed_dir = f"{bids_root}processed/"
 
@@ -221,13 +243,14 @@ def plot_channel(
     plt.title(f"Grand Average ERP at {channel} (n={n_subjects} subjects)")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"{processed_dir}grand_average_{channel}.png", dpi=150)
-    plt.show()
+    # plt.savefig(f"{processed_dir}grand_average_{channel}.png", dpi=150)
+    # plt.show()
+    plt.savefig(output_file, bbox_inches="tight")
 
     return data_random, data_regular, times
 
 
-def plot_topomap(evoked_diff: Evoked):
+def plot_topomap(output_file, evoked_diff: Evoked):
     evoked_diff = evoked_diff.copy().drop_channels(
         [c for c in evoked_diff.ch_names if c.startswith("EXG")]
     )
@@ -253,4 +276,5 @@ def plot_topomap(evoked_diff: Evoked):
         ax.set_title(title)
 
     fig.colorbar(axes[-1].images[0], ax=axes, shrink=0.6, label="µV")
-    plt.show()
+    # plt.show()
+    plt.savefig(output_file, bbox_inches="tight")

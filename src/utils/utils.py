@@ -7,7 +7,7 @@ from os.path import exists, join
 import mne
 import mne_bids
 import numpy as np
-from mne import read_epochs
+from mne import read_epochs, Epochs
 
 
 def get_subject_list(bids_root) -> list[str]:
@@ -55,44 +55,17 @@ def evoke_channels(epochs):
     return evoked_random, evoked_regular
 
 
-def average_channel(channel, bids_root="../data/"):
+def average_channel(channel, epochs_dict: dict[int, Epochs]):
     """
     Load all processed epoch files and compute the grand average for channel PO7,
-    separately for random and regular conditions.
-
-    Parameters
-    ----------
-    channel : str
-    bids_root : str
-        Path to the BIDS root directory.
-
-    Returns
-    -------
-    data_random : np.ndarray
-        Grand average waveform for random condition in µV (n_times,).
-    data_regular : np.ndarray
-        Grand average waveform for regular condition in µV (n_times,).
-    times : np.ndarray
-        Time vector in seconds.
+    separately for random and regular conditions
     """
-    processed_dir = f"{bids_root}processed/"
-    epoch_files = sorted(glob(f"{processed_dir}sub-*_epochs.fif"))
-
-    if not epoch_files:
-        print(f"No processed epoch files found in {processed_dir}")
-        return None, None, None
-
-    print(f"Found {len(epoch_files)} processed epoch file(s)")
 
     evokeds_random = []
     evokeds_regular = []
     times = None
 
-    for fpath in epoch_files:
-        subject_id = fpath.split("sub-")[-1].split("_epochs")[0]
-        print(f"  Loading subject {subject_id}...")
-
-        epochs = read_epochs(fpath, preload=True)
+    for subject_id, epochs in epochs_dict.items():
 
         # Check if channel exists
         if channel not in epochs.ch_names:
@@ -102,6 +75,7 @@ def average_channel(channel, bids_root="../data/"):
             continue
 
         # Create evoked responses for each condition
+        print(f"Evoking subject {subject_id}")
         evoked_random, evoked_regular = evoke_channels(epochs)
         evoked_diff = mne.combine_evoked(
             [evoked_regular, evoked_random], weights=[1, -1]
@@ -116,8 +90,7 @@ def average_channel(channel, bids_root="../data/"):
         times = evoked_random.times  # Same for all subjects
 
     if not evokeds_random:
-        print(f"No valid subjects with {channel} channel found.")
-        return None, None, None
+        raise RuntimeError(f"No valid subjects with {channel} channel found.")
 
     # Stack and compute mean across subjects
     n_subjects = len(evokeds_random)

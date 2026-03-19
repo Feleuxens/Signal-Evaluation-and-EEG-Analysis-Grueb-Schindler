@@ -3,8 +3,12 @@ from time import time
 from os import mkdir, getenv
 from os.path import isdir
 
-from pipeline.analyze_subject import run_pipeline, generate_plots_from_existing_data
-from utils.plots import generate_plots, plot_channel, plot_topomap
+from pipeline.analyze_subject import (
+    run_pipeline,
+    plot_specific_subject,
+    plot_average_data,
+)
+from utils.plots import plot_channel, plot_topomap
 from utils.utils import (
     get_subject_list,
     average_channel,
@@ -72,12 +76,18 @@ def main():
         total_time = time() - start_time
         print(f"\nElapsed time: {total_time} seconds\n")
     elif i.lower() == "5":
-        pass  # TODO
+        c = int(input("Config ID: "))
+        config = load_config(get_config_path(config_root, c))
+        s = f"{int(input("Subject ID: ")):03d}"
+        plot_specific_subject(config, bids_root + "/processed", c, s)
     elif i.lower() == "6":
-        pass  # TODO
+        c = int(input("Config ID: "))
+        config = load_config(get_config_path(config_root, c))
+        plot_average_data(config, bids_root + "/processed", c)
     elif i.lower() == "7":
-        pass  # TODO
-
+        for c in configs:
+            config = load_config(get_config_path(config_root, c))
+            plot_average_data(config, bids_root + "/processed", c)
     else:
         print("Invalid input")
 
