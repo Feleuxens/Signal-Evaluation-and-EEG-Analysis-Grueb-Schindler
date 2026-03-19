@@ -60,13 +60,13 @@ def read_all_files_per_type(
 
     data = {}
     if file_type == "epo":
-        files = sorted(glob(f"{path}/sub-*_epochs.fif"))
+        files = sorted(glob(f"{path}/sub-*_epo.fif"))
 
         if not files:
             raise ValueError(f"No processed epoch files found in {path}")
 
         for fpath in files:
-            subject_id = fpath.split("sub-")[-1].split("_epochs")[0]
+            subject_id = fpath.split("sub-")[-1].split("_epo")[0]
             data[subject_id] = read_epochs(fpath, preload=True)
         return data
 
