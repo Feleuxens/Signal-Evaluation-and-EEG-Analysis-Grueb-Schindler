@@ -79,6 +79,8 @@ def main():
         plot_average_data(config, bids_root + "/processed", c)
     elif i.lower() == "7":
         for c in configs:
+            if not isdir(bids_root + "/processed/" + str(c)):
+                continue
             config = load_config(get_config_path(config_root, c))
             plot_average_data(config, bids_root + "/processed", c)
     else:
