@@ -48,7 +48,7 @@ def read_data(
         with open(f"{path}/sub-{subject_id}_meta.txt", "r") as f:
             pipeline_stats = loads(f.read())
 
-    return epochs, raw, ica, pipeline_stats
+    return epochs, raw, ica, pipeline_stats  # pyright: ignore[reportReturnType]
 
 
 def read_all_files_per_type(
