@@ -40,7 +40,7 @@ def get_config_path(config_root: str, config_id: int) -> str:
     raise FileNotFoundError(f"No config file for id {config_id}")
 
 
-def evoke_channels(epochs):
+def evoke_channels(epochs: Epochs) -> tuple[mne.EvokedArray, mne.EvokedArray]:
     desc_random = "random"
     desc_regular = "regular"
 
@@ -52,7 +52,7 @@ def evoke_channels(epochs):
     evoked_random = epochs_random.average()
     evoked_regular = epochs_regular.average()
 
-    return evoked_random, evoked_regular
+    return evoked_random, evoked_regular # pyright: ignore[reportReturnType]
 
 
 def average_channel(channel, epochs_dict: dict[int, Epochs]):
@@ -63,6 +63,7 @@ def average_channel(channel, epochs_dict: dict[int, Epochs]):
 
     evokeds_random = []
     evokeds_regular = []
+    evoked_diff = None
     times = None
 
     for subject_id, epochs in epochs_dict.items():
@@ -89,7 +90,7 @@ def average_channel(channel, epochs_dict: dict[int, Epochs]):
 
         times = evoked_random.times  # Same for all subjects
 
-    if not evokeds_random:
+    if not evokeds_random or not evokeds_regular or not evoked_diff or not times:
         raise RuntimeError(f"No valid subjects with {channel} channel found.")
 
     # Stack and compute mean across subjects
