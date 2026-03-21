@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -204,7 +203,7 @@ def butterfly_plot(output_file, epochs):
 
     # Butterfly plot for evoked difference or single condition
     figure: Figure = evoked_random.plot(
-        spatial_colors=False,
+        spatial_colors=False, # pyright: ignore[reportArgumentType]
         show=False,
         time_unit="s",
         titles=f"Butterfly — Random",
@@ -228,10 +227,7 @@ def plot_channel(
     data_regular,
     times,
     n_subjects,
-    bids_root="../data/",
 ):
-    processed_dir = f"{bids_root}processed/"
-
     plt.figure(figsize=(10, 5))
     plt.plot(times * 1000, data_random, "r-", linewidth=2, label="Random")
     plt.plot(times * 1000, data_regular, "b-", linewidth=2, label="Regular")
@@ -243,8 +239,6 @@ def plot_channel(
     plt.title(f"Grand Average ERP at {channel} (n={n_subjects} subjects)")
     plt.legend()
     plt.tight_layout()
-    # plt.savefig(f"{processed_dir}grand_average_{channel}.png", dpi=150)
-    # plt.show()
     plt.savefig(output_file, bbox_inches="tight")
 
     return data_random, data_regular, times
@@ -253,7 +247,7 @@ def plot_channel(
 def plot_topomap(output_file, evoked_diff: Evoked):
     evoked_diff = evoked_diff.copy().drop_channels(
         [c for c in evoked_diff.ch_names if c.startswith("EXG")]
-    )
+    ) # pyright: ignore[reportAssignmentType]
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), constrained_layout=True)
 
@@ -265,7 +259,7 @@ def plot_topomap(output_file, evoked_diff: Evoked):
 
     for ax, (title, (tmin, tmax)) in zip(axes, time_windows.items()):
         evoked_diff.plot_topomap(
-            times=[(tmin + tmax) / 2],
+            times=[(tmin + tmax) / 2], # pyright: ignore[reportArgumentType]
             average=tmax - tmin,
             axes=ax,
             show=False,

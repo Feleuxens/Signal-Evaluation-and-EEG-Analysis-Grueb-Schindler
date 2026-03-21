@@ -1,13 +1,8 @@
 from os import mkdir
 from os.path import isdir
-from json import dumps
-
-from mne import read_epochs
-from mne.io import read_raw_fif
 from mne.preprocessing import ICA
 from mne_bids import BIDSPath
 
-from utils.config import PipelineConfig
 from pipeline.step01_loading import load_data
 from pipeline.step02_badchannels import detect_bad_channels
 from pipeline.step03_filtering import filter_data
@@ -18,6 +13,8 @@ from pipeline.step07_ica import run_ica
 from pipeline.step08_interpolation import interpolate_bad_channels
 from pipeline.step09_epoching import epoch_data
 from pipeline.step10_trialrejection import reject_trials
+
+from utils.config import PipelineConfig
 from utils.files import save_data, read_data, read_all_files_per_type
 from utils.plots import (
     power_spectral_density_plot,

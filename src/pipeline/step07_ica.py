@@ -1,6 +1,5 @@
 from mne.preprocessing import ICA, create_eog_epochs, create_ecg_epochs
 from mne import pick_types
-import numpy as np
 from mne.io.edf.edf import RawEDF
 
 from utils.config import StepICA

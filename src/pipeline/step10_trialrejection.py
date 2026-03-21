@@ -1,9 +1,3 @@
-"""
-Step 10: Trial (Epoch) Rejection
-
-Reject epochs based on peak-to-peak amplitude thresholds and flat signal detection.
-"""
-
 from mne import Epochs
 
 from utils.config import StepTrialRejection
