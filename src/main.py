@@ -1,4 +1,9 @@
-import tracemalloc
+"""
+Entry point for the EEG processing pipeline.
+
+Provides a CLI menu to run preprocessing pipelines, generate plots,
+and view statistics. Supports parallel execution across subjects.
+"""
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from time import time
@@ -21,6 +26,12 @@ from utils.config import load_config
 
 
 def main():
+    """Interactive CLI for selecting and running pipeline actions.
+
+    Reads BIDS_ROOT and CONFIG_ROOT from environment variables,
+    discovers available subjects and configs, then prompts the user
+    to choose an action (processing, plotting, or statistics).
+    """
     bids_root = getenv("BIDS_ROOT", "../data/")
     bids_root = bids_root.rstrip("/")
     config_root = getenv("CONFIG_ROOT", "../config/")
@@ -90,7 +101,22 @@ def main():
 
 
 def process_subject(config_path: str, bids_root: str, config_id: int, subject_id: str):
-    """Top-level function for each worker — must be picklable."""
+    """Run the pipeline for a single subject in a worker process.
+
+    Loads the config from disk inside each worker rather than receiving
+    a PipelineConfig object, to avoid pickling issues with complex types.
+
+    Args:
+        config_path: Path to the TOML configuration file.
+        bids_root: Root directory of the BIDS dataset.
+        config_id: Numeric identifier for the configuration (used for
+            organizing output directories).
+        subject_id: Zero-padded subject identifier (e.g. "001").
+
+    Returns:
+        A tuple of (subject_id, config_id, error_message). The error
+        message is None on success, or a string description on failure.
+    """
     config = load_config(config_path)
     try:
         run_pipeline(config, bids_root, config_id, subject_id)
@@ -100,7 +126,17 @@ def process_subject(config_path: str, bids_root: str, config_id: int, subject_id
 
 
 def run_parallel(tasks: list[tuple[str, str, int, str]]):
-    """Run (config_path, bids_root, config_id, subject_id) tasks in parallel."""
+    """Execute pipeline tasks in parallel using a process pool.
+
+    The number of workers is controlled by the MAX_WORKERS environment
+    variable (default: 2). Each task runs in a separate process to
+    avoid GIL contention on CPU-bound EEG processing.
+
+    Args:
+        tasks: List of (config_path, bids_root, config_id, subject_id)
+            tuples. Each tuple represents one independent pipeline run
+            for a single subject with a given configuration.
+    """
     start_time = time()
 
     with ProcessPoolExecutor(max_workers=int(getenv("MAX_WORKERS", 2))) as executor:

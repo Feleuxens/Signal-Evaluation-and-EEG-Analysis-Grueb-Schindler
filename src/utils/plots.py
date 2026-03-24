@@ -1,3 +1,10 @@
+"""Plotting utilities for EEG pipeline visualization.
+
+Provides functions for generating ERP plots, PSD plots, ICA
+topography maps, butterfly plots, topomaps, and before/after
+comparisons of preprocessing steps.
+"""
+
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -5,21 +12,45 @@ from matplotlib.figure import Figure
 from mne import Evoked
 import mne
 import numpy as np
+from mne.io import Raw
 
 from utils.utils import evoke_channels
 
 
-def power_spectral_density_plot(output_file, raw, fmin, fmax):
+def power_spectral_density_plot(output_file, raw, fmin, fmax) -> None:
+    """Plot sensor-level power spectral density using Welch's method.
+
+    Computes and saves an average PSD across all EEG channels in the
+    specified frequency range.
+
+    Args:
+        output_file (str): File path to save the plot to.
+        raw (mne.io.Raw): Continuous EEG data.
+        fmin (float): Lower frequency bound in Hz.
+        fmax (float): Upper frequency bound in Hz.
+    """
     # Sensor-level PSD (Welch) — full-band and zoomed alpha/beta
     fig_psd = raw.compute_psd(method="welch", fmin=fmin, fmax=fmax, n_fft=2048).plot(
         average=True, picks="eeg", show=False
     )
     fig_psd.suptitle(f"Sensor PSD ({fmin}-{fmax} Hz)")
-    # plt.show()
     plt.savefig(output_file, bbox_inches="tight")
 
 
-def ica_topography_plot(output_file, ica, raw):
+def ica_topography_plot(output_file, ica, raw) -> None:
+    """Plot ICA component topographies.
+
+    Fits ICA on a copy of the raw data with EXG channels removed,
+    then plots up to 20 component topographies. Saves one or more
+    image files depending on how many components are plotted.
+
+    Args:
+        output_file (str): Base file path for saving plots. Page
+            indices and ".png" are appended automatically.
+        ica (mne.preprocessing.ICA | None): Fitted ICA object, or
+            None to skip plotting.
+        raw (mne.io.Raw): Continuous EEG data used for fitting.
+    """
     if ica is None:
         return
 
@@ -41,7 +72,23 @@ def ica_topography_plot(output_file, ica, raw):
         figures.savefig(output_file + ".png", bbox_inches="tight")
 
 
-def one_channel_erp_plot(output_file, raw, epochs, baseline):
+def one_channel_erp_plot(output_file, raw, epochs, baseline) -> None:
+    """Plot single-channel ERP comparing random vs regular conditions.
+
+    Selects PO7 by default, falling back to other posterior channels
+    if unavailable. Plots both conditions overlaid with the baseline
+    window shaded.
+
+    Args:
+        output_file (str): File path to save the plot to.
+        raw (mne.io.Raw): Continuous EEG data (used to check channel
+            availability).
+        epochs (mne.Epochs): Epoched data containing "random" and
+            "regular" conditions.
+        baseline (list[float]): Two-element list [start, end] in
+            seconds defining the baseline window, shown as a shaded
+            region on the plot.
+    """
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # choose channel
@@ -71,11 +118,23 @@ def one_channel_erp_plot(output_file, raw, epochs, baseline):
     plt.ylabel("Amplitude (µV)")
     plt.title(f"ERP at {preferred}")
     plt.legend()
-    # plt.show()
     plt.savefig(output_file, bbox_inches="tight")
 
 
-def all_channel_erp_plot(output_file, epochs, baseline):
+def all_channel_erp_plot(output_file, epochs, baseline) -> None:
+    """Plot mean ERP across all channels for random vs regular conditions.
+
+    Averages amplitude across all channels at each time point and
+    plots both conditions overlaid.
+
+    Args:
+        output_file (str): File path to save the plot to.
+        epochs (mne.Epochs): Epoched data containing "random" and
+            "regular" conditions.
+        baseline (list[float]): Two-element list [start, end] in
+            seconds defining the baseline window, shown as a shaded
+            region on the plot.
+    """
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # For type checking reasons
@@ -97,25 +156,22 @@ def all_channel_erp_plot(output_file, epochs, baseline):
     plt.ylabel("Amplitude (µV)")
     plt.legend()
     plt.title("Mean across channels — Random vs Regular")
-    # plt.show()
     plt.savefig(output_file, bbox_inches="tight")
 
 
-def unprocessed_vs_processed_plot(raw_unprocessed, raw):
-    # # Quick overlay of unprocessed vs processed PSD
-    # fig = plt.figure(figsize=(8, 4))
-    # raw_unprocessed.compute_psd(method="welch", fmin=1, fmax=40, n_fft=2048).plot(
-    #     average=True, picks="eeg", show=False
-    # )
-    # raw_processed.compute_psd(method="welch", fmin=1, fmax=40, n_fft=2048).plot(
-    #     average=True, picks="eeg", show=False
-    # )
-    # plt.suptitle(f"PSD: unprocessed (first) vs processed (second)")
-    # plt.show()
+def unprocessed_vs_processed_plot(raw_unprocessed: Raw, raw: Raw) -> None:
+    """Plot normalized overlay of unprocessed vs processed EEG traces.
 
-    # ensure raw_unprocessed saved before filters/ASR/ICA
-    # raw_unprocessed = raw.copy()  # add this right after raw.load_data()
+    Selects up to 10 channels and plots 10 consecutive time windows,
+    each 10 seconds long, starting at t=100s. Unprocessed data is
+    shown in black, processed in red. Each channel is normalized
+    to unit range for visual comparison.
 
+    Args:
+        raw_unprocessed (mne.io.Raw): Original continuous data before
+            any preprocessing.
+        raw (mne.io.Raw): Continuous data after the full pipeline.
+    """
     # select up to 10 channels (change list if desired)
     candidates = ["Fp1", "Fp2", "AF7", "AF8", "Fz", "Cz", "Pz", "Oz", "O1", "O2"]
     picked = [c for c in candidates if c in raw.ch_names]
@@ -130,6 +186,13 @@ def unprocessed_vs_processed_plot(raw_unprocessed, raw):
 
     # time window (s)
     tstart, duration = 100.0, 10.0
+
+    # compute demeaned, unit-range signals per channel
+    def norm(x):
+        x = x - x.mean(axis=1, keepdims=True)
+        rng = x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True)
+        rng[rng == 0] = 1.0
+        return x / rng
 
     for i in range(10):
         tmin = tstart + i * duration
@@ -149,13 +212,6 @@ def unprocessed_vs_processed_plot(raw_unprocessed, raw):
         data_un_uV = data_un * 1e6
         data_proc_uV = data_proc * 1e6
 
-        # compute demeaned, unit-range signals per channel
-        def norm(x):
-            x = x - x.mean(axis=1, keepdims=True)
-            rng = x.max(axis=1, keepdims=True) - x.min(axis=1, keepdims=True)
-            rng[rng == 0] = 1.0
-            return x / rng
-
         un = norm(data_un_uV)
         pr = norm(data_proc_uV)
 
@@ -163,42 +219,29 @@ def unprocessed_vs_processed_plot(raw_unprocessed, raw):
         offsets = np.arange(len(picked))[::-1] * spacing
 
         plt.figure(figsize=(12, 6))
-        for i, ch in enumerate(picked):
+        for j, ch in enumerate(picked):
             off = offsets[i]
-            plt.plot(times, un[i] + off, color="k", linewidth=0.6)
-            plt.plot(times, pr[i] + off, color="r", linewidth=0.8)
+            plt.plot(times, un[j] + off, color="k", linewidth=0.6)
+            plt.plot(times, pr[j] + off, color="r", linewidth=0.8)
             plt.text(times[0] - duration * 0.01, off, ch, va="center", fontsize=9)
         plt.yticks([])
         plt.xlabel("Time (s)")
         plt.title("Normalized: unprocessed (black) vs processed (red)")
         plt.show()
 
-    # # compute offsets for stacking
-    # max_amp = np.max(np.abs(np.concatenate([data_un_uV, data_proc_uV])))
-    # spacing = max_amp * 3  # vertical spacing between channels
-    # offsets = np.arange(len(picked))[::-1] * spacing  # top channel first
-    #
-    # plt.figure(figsize=(12, 6))
-    # for i, ch in enumerate(picked):
-    #     off = offsets[i]
-    #     plt.plot(
-    #         times, data_un_uV[i] + off, color="k", linewidth=0.6
-    #     )  # unprocessed black
-    #     plt.plot(
-    #         times, data_proc_uV[i] + off, color="r", linewidth=0.8
-    #     )  # processed red
-    #     plt.text(times[0] - duration * 0.01, off, ch, va="center", fontsize=9)
-    #
-    # plt.xlim(times[0], times[-1])
-    # plt.xlabel("Time (s)")
-    # plt.yticks([])  # hide numeric y ticks
-    # plt.title("Raw: unprocessed (black) vs processed (red) — selected channels")
-    # plt.tight_layout()
-    # plt.show()
-    #
 
+def butterfly_plot(output_file, epochs) -> None:
+    """Plot butterfly ERP for the random condition and the random-regular difference.
 
-def butterfly_plot(output_file, epochs):
+    Saves two plots: one for the random condition alone, and one for
+    the difference wave (random minus regular).
+
+    Args:
+        output_file (str): Base file path. "_random.png" and
+            "_combined.png" are appended for the two plots.
+        epochs (mne.Epochs): Epoched data containing "random" and
+            "regular" conditions.
+    """
     evoked_random, evoked_regular = evoke_channels(epochs)
 
     # Butterfly plot for evoked difference or single condition
@@ -228,6 +271,24 @@ def plot_channel(
     times,
     n_subjects,
 ):
+    """Plot grand average ERP at a single channel across subjects.
+
+    Shows random and regular conditions overlaid with reference
+    lines at zero amplitude and zero time.
+
+    Args:
+        output_file (str): File path to save the plot to.
+        channel (str): Channel name used in the plot title
+            (e.g. "PO7", "PO7+PO8").
+        data_random (np.ndarray): Grand average amplitude for the
+            random condition in µV, shape (n_times,).
+        data_regular (np.ndarray): Grand average amplitude for the
+            regular condition in µV, shape (n_times,).
+        times (np.ndarray): Time points in seconds. Converted to
+            milliseconds for display.
+        n_subjects (int): Number of subjects included in the grand
+            average, shown in the plot title.
+    """
     plt.figure(figsize=(10, 5))
     plt.plot(times * 1000, data_random, "r-", linewidth=2, label="Random")
     plt.plot(times * 1000, data_regular, "b-", linewidth=2, label="Regular")
@@ -241,10 +302,19 @@ def plot_channel(
     plt.tight_layout()
     plt.savefig(output_file, bbox_inches="tight")
 
-    return data_random, data_regular, times
 
+def plot_topomap(output_file, evoked_diff: Evoked) -> None:
+    """Plot scalp topography maps for three ERP time windows.
 
-def plot_topomap(output_file, evoked_diff: Evoked):
+    Shows the spatial distribution of the random-regular difference
+    wave at P1 (100–130 ms), N1 (170–200 ms), and SPN (300–1000 ms)
+    time windows. EXG channels are dropped before plotting.
+
+    Args:
+        output_file (str): File path to save the combined figure to.
+        evoked_diff (Evoked): Difference wave (random minus regular)
+            evoked object.
+    """
     evoked_diff = evoked_diff.copy().drop_channels(
         [c for c in evoked_diff.ch_names if c.startswith("EXG")]
     )  # pyright: ignore[reportAssignmentType]
@@ -270,5 +340,4 @@ def plot_topomap(output_file, evoked_diff: Evoked):
         ax.set_title(title)
 
     fig.colorbar(axes[-1].images[0], ax=axes, shrink=0.6, label="µV")
-    # plt.show()
     plt.savefig(output_file, bbox_inches="tight")

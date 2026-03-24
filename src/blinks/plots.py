@@ -1,11 +1,22 @@
+"""Plotting utilities for blink detection analysis.
+
+Provides functions for visualizing EOG channels, comparing epochs
+before and after ASR with blink overlay, and generating grand
+average ERP plots split by blink presence. Supports both
+single-subject interactive inspection and multi-subject grand
+average comparisons.
+"""
+
 from os import mkdir
 from os.path import isdir
+
 from mne_bids import BIDSPath
-import mne
 from mne import Epochs
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.axes import Axes
 
 from pipeline.step01_loading import load_data
 
@@ -20,11 +31,17 @@ from blinks.blinks import (
 from blinks.files import load_all_epochs
 
 
-def plot_eog(bids_root: str, subject_id: str):
-    """
-    Plot presumable EOG channels of the subject.
-    This is for manual inspection only.
-    No further analysis is done here.
+def plot_eog(bids_root: str, subject_id: str) -> None:
+    """Plot raw EOG channels for manual visual inspection.
+
+    Loads the subject's data, isolates EOG channels, and opens an
+    interactive MNE plot starting at t=60s. Used to verify which
+    EXG channels correspond to EOG and to visually confirm blink
+    morphology.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+        subject_id (str): Zero-padded subject identifier (e.g. "001").
     """
 
     bids_path = BIDSPath(
@@ -50,13 +67,30 @@ def plot_eog(bids_root: str, subject_id: str):
 
 def plot_average_data(
     bids_root: str,
-    epochs_with_blinks: dict[int, Epochs],
-    epochs_without_blinks: dict[int, Epochs],
+    epochs_with_blinks: dict[str, Epochs],
+    epochs_without_blinks: dict[str, Epochs],
     with_asr: bool,
-):
+) -> None:
+    """Generate grand average ERP plots split by blink condition.
 
+    Computes grand averages at PO7 and PO8 separately for
+    blink-present and blink-absent epochs, averages across both
+    channels, and saves two plots: one for epochs with blinks and
+    one for epochs without.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset. Used
+            to derive the output folder path.
+        epochs_with_blinks (dict[str, Epochs]): Mapping of subject
+            index to epochs that overlap with detected blinks.
+        epochs_without_blinks (dict[str, Epochs]): Mapping of subject
+            index to blink-free epochs.
+        with_asr (bool): Whether the epochs were processed with ASR.
+            Affects the output filename and plot title.
+    """
     output_folder = bids_root + "/processed_blinkdetection"
 
+    # Grand average for blink-present epochs
     (
         data_random_po7_with_blink,
         data_regular_po7_with_blink,
@@ -68,6 +102,7 @@ def plot_average_data(
         "PO8", epochs_with_blinks
     )
 
+    # Grand average for blink-absent epochs
     (
         data_random_po7_without_blink,
         data_regular_po7_without_blink,
@@ -79,6 +114,7 @@ def plot_average_data(
         average_channel("PO8", epochs_without_blinks)
     )
 
+    # Bilateral average (PO7 + PO8) / 2
     data_random_with_blink = pairwise_average(
         data_random_po7_with_blink, data_random_po8_with_blink
     )
@@ -92,13 +128,9 @@ def plot_average_data(
         data_regular_po7_without_blink, data_regular_po8_without_blink
     )
 
-    n_epochs_with_blinks = 0
-    for epochs in epochs_with_blinks.values():
-        n_epochs_with_blinks += len(epochs)
-
-    n_epochs_without_blinks = 0
-    for epochs in epochs_without_blinks.values():
-        n_epochs_without_blinks += len(epochs)
+    # Count total epochs across all subjects
+    n_epochs_with_blinks = sum(len(e) for e in epochs_with_blinks.values())
+    n_epochs_without_blinks = sum(len(e) for e in epochs_without_blinks.values())
 
     if not isdir(output_folder):
         mkdir(output_folder)
@@ -132,7 +164,32 @@ def plot_average_data(
 
 def plot_channel(
     output_file, title, channel, data_random, data_regular, times, n_subjects, n_epochs
-):
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Plot grand average ERP at a channel with blink condition info.
+
+    Similar to utils.plots.plot_channel but includes epoch count
+    in the title for blink-conditioned analysis.
+
+    Args:
+        output_file (str): File path to save the plot to.
+        title (str): Condition description included in the plot
+            title (e.g. "with ASR and with blinks").
+        channel (str): Channel name for the plot title
+            (e.g. "PO7+PO8").
+        data_random (np.ndarray): Grand average amplitude for the
+            random condition in µV, shape (n_times,).
+        data_regular (np.ndarray): Grand average amplitude for the
+            regular condition in µV, shape (n_times,).
+        times (np.ndarray): Time points in seconds. Converted to
+            milliseconds for display.
+        n_subjects (int): Number of subjects in the grand average.
+        n_epochs (int): Total number of epochs across all subjects.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray]: The input
+            (data_random, data_regular, times) passed through for
+            convenience.
+    """
 
     plt.figure(figsize=(10, 5))
     plt.plot(times * 1000, data_random, "r-", linewidth=2, label="Random")
@@ -154,14 +211,46 @@ def plot_channel(
 
 def plot_epochs_before_after(
     subject_id: str,
-    epochs_after: mne.Epochs,
-    epochs_before: mne.Epochs,
+    epochs_after: Epochs,
+    epochs_before: Epochs,
     blink_intervals,
     picks: list[str],
     eog_picks: list[str],
     scale=1e6,
     figsize=(15, 15),
-):
+) -> tuple[Figure, Axes]:
+    """Interactive epoch viewer comparing before/after ASR with blink overlay.
+
+    Displays EEG and EOG channels for one epoch at a time, with the
+    ASR-processed data in blue and the pre-ASR data in orange (dashed,
+    EEG only). Detected blink intervals are shaded in red. Navigate
+    epochs with arrow keys, Page Up/Down, Home, and End.
+
+    Args:
+        subject_id (str): Zero-padded subject identifier, shown in
+            the plot title.
+        epochs_after (Epochs): Epochs from the pipeline branch with
+            ASR applied.
+        epochs_before (Epochs): Epochs from the pipeline branch
+            without ASR.
+        blink_intervals (list[tuple[float, float]]): Detected blink
+            intervals as (start_seconds, end_seconds) pairs in
+            absolute recording time.
+        picks (list[str]): EEG channel names to display
+            (e.g. ["PO7", "PO8"]). Both before and after traces
+            are shown.
+        eog_picks (list[str]): EOG channel names to display
+            (e.g. ["EOG5", "EOG6"]). Only the after-ASR trace is
+            shown.
+        scale (float): Scaling factor applied to data for display.
+            Defaults to 1e6 (Volts to µV).
+        figsize (tuple[int, int]): Figure size in inches as
+            (width, height). Defaults to (15, 15).
+
+    Returns:
+        tuple[Figure, Axes]: The matplotlib Figure and Axes objects
+            for further customization if needed.
+    """
     plot_chs = picks + eog_picks
     picks_idx = [epochs_after.ch_names.index(ch) for ch in plot_chs]
 
@@ -189,7 +278,8 @@ def plot_epochs_before_after(
         Line2D([0], [0], color="orange", linestyle="--", linewidth=1, label="Before"),
     ]
 
-    def redraw(idx):
+    def redraw(idx) -> None:
+        """Redraw the plot for the given epoch index."""
         ax.cla()
         for i, ch in enumerate(plot_chs):
             ax.plot(
@@ -198,6 +288,7 @@ def plot_epochs_before_after(
                 color="tab:blue",
                 linewidth=0.9,
             )
+            # Show before-ASR trace only for EEG channels
             if ch.startswith("PO"):
                 ax.plot(
                     times,
@@ -217,7 +308,7 @@ def plot_epochs_before_after(
         ax.grid(True, linewidth=0.3, alpha=0.6)
         ax.legend(handles=legend_handles, loc="upper right")
 
-        # add new blink shading
+        # Shade blink intervals that overlap with this epoch
         t0 = epoch_start_times_raw[idx]
         t_end = t0 + (times[-1] - times[0])
         for s, e in blink_intervals:
@@ -231,7 +322,8 @@ def plot_epochs_before_after(
 
         fig.canvas.draw_idle()
 
-    def on_key(event):
+    def on_key(event) -> None:
+        """Handle keyboard navigation between epochs."""
         nonlocal current
         if event.key in ("right", "pagedown") and current < n_epochs - 1:
             current += 1
@@ -256,9 +348,19 @@ def plot_epochs_before_after(
 
 def plot_eeg_plus_eog_one_subject(
     bids_root: str, subject_id: str, config: PipelineConfig
-):
-    """
-    Plot EOG channels as well as before and after ASR eeg data for each epoch for one subject.
+) -> None:
+    """Run the pipeline and show interactive before/after blink overlay for one subject.
+
+    Processes the subject through both pipeline branches (with and
+    without ASR), detects blinks, and opens an interactive epoch
+    viewer showing PO7, PO8, EOG5, and EOG6 with blink regions
+    highlighted.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+        subject_id (str): Zero-padded subject identifier (e.g. "001").
+        config (PipelineConfig): Pipeline configuration used for
+            preprocessing.
     """
     epochs_after, epochs_before, raw_after = process_subject_with_blinkdetection(
         bids_root, subject_id, config
@@ -292,7 +394,22 @@ def plot_eeg_plus_eog_one_subject(
 
 def all_subjects_plotting(
     bids_root: str, config: PipelineConfig, output_folder: str, with_asr: bool
-):
+) -> None:
+    """Load precomputed blink-labeled epochs and generate grand average plots.
+
+    Loads blink-present and blink-absent epochs for all subjects from
+    disk, then generates grand average ERP plots split by blink
+    condition.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+        config (PipelineConfig): Pipeline configuration. Currently
+            unused but passed for consistency.
+        output_folder (str): Directory containing the precomputed
+            blink-labeled epoch files.
+        with_asr (bool): Whether to load epochs from the ASR-enabled
+            pipeline branch.
+    """
     epochs_with_blinks, epochs_without_blinks = load_all_epochs(
         bids_root, output_folder, with_asr
     )

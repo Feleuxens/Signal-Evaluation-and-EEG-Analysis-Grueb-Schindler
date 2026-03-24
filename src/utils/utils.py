@@ -1,3 +1,9 @@
+"""Utility functions for the EEG processing pipeline.
+
+Provides helpers for discovering subjects and configs, computing
+grand averages across subjects, and printing pipeline statistics.
+"""
+
 import json
 from glob import glob
 from math import inf
@@ -11,7 +17,15 @@ from mne import Epochs, Evoked
 
 
 def get_subject_list(bids_root) -> list[str]:
-    """Get list of subject IDs from BIDS dataset."""
+    """Get list of zero-padded subject IDs from a BIDS dataset.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+
+    Returns:
+        list[str]: Subject IDs zero-padded to 3 digits
+            (e.g. ["001", "002", ...]).
+    """
 
     subject_list = mne_bids.get_entity_vals(bids_root, entity_key="subject")
     subject_list = [f"{int(s):03d}" for s in subject_list]  # zero-pad to 3 digits
@@ -20,7 +34,21 @@ def get_subject_list(bids_root) -> list[str]:
 
 
 def get_config_ids(config_root: str) -> list[int]:
-    """Get list of configs for pipeline execution."""
+    """Get sorted list of numeric config IDs from a config directory.
+
+    Config files are expected to be named with a leading numeric ID
+    separated by an underscore (e.g. "1_default.toml", "2_no_asr.toml").
+
+    Args:
+        config_root (str): Directory containing TOML config files.
+
+    Returns:
+        list[int]: Sorted list of config IDs.
+
+    Raises:
+        AssertionError: If the config directory does not exist.
+        ValueError: If duplicate config IDs are found.
+    """
     assert exists(config_root)
     ids = []
     for name in listdir(config_root):
@@ -33,6 +61,21 @@ def get_config_ids(config_root: str) -> list[int]:
 
 
 def get_config_path(config_root: str, config_id: int) -> str:
+    """Resolve a numeric config ID to its full file path.
+
+    Scans the config directory for a file whose name starts with
+    the given ID.
+
+    Args:
+        config_root (str): Directory containing TOML config files.
+        config_id (int): Numeric config identifier to look up.
+
+    Returns:
+        str: Full path to the matching config file.
+
+    Raises:
+        FileNotFoundError: If no file matches the given config ID.
+    """
     for name in listdir(config_root):
         stem = name.rsplit(".", 1)[0] if "." in name else name
         if stem.split("_", 1)[0] == str(config_id):
@@ -41,6 +84,17 @@ def get_config_path(config_root: str, config_id: int) -> str:
 
 
 def evoke_channels(epochs: Epochs) -> tuple[mne.EvokedArray, mne.EvokedArray]:
+    """Compute average evoked responses for random and regular conditions.
+
+    Args:
+        epochs (Epochs): Epoched data containing "random" and
+            "regular" condition labels.
+
+    Returns:
+        tuple[mne.EvokedArray, mne.EvokedArray]: A tuple of
+            (evoked_random, evoked_regular), each averaged across
+            all trials in the respective condition.
+    """
     desc_random = "random"
     desc_regular = "regular"
 
@@ -57,12 +111,32 @@ def evoke_channels(epochs: Epochs) -> tuple[mne.EvokedArray, mne.EvokedArray]:
 
 def average_channel(
     channel, epochs_dict: dict[str, Epochs]
-) -> tuple[list[float], list[float], int, int, Evoked]:
-    """
-    Load all processed epoch files and compute the grand average for channel PO7,
-    separately for random and regular conditions
-    """
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, Evoked]:
+    """Compute grand average ERP at a single channel across subjects.
 
+    For each subject, extracts the evoked response at the specified
+    channel for both conditions, then averages across all subjects.
+
+    Args:
+        channel (str): Channel name to extract (e.g. "PO7", "PO8").
+        epochs_dict (dict[str, Epochs]): Mapping of subject ID to
+            Epochs object, as returned by read_all_files_per_type().
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, int, Evoked]:
+            A tuple of:
+            - data_random: Grand average for random condition in µV,
+              shape (n_times,).
+            - data_regular: Grand average for regular condition in µV,
+              shape (n_times,).
+            - times: Time points in seconds, shape (n_times,).
+            - n_subjects: Number of subjects included.
+            - evoked_diff: Difference wave (regular minus random) from
+              the last subject, used for topographic plotting.
+
+    Raises:
+        RuntimeError: If no subjects have the requested channel.
+    """
     evokeds_random: list[int] = []
     evokeds_regular: list[int] = []
     evoked_diff = None
@@ -116,16 +190,47 @@ def average_channel(
     return data_random, data_regular, times, n_subjects, evoked_diff
 
 
-def pairwise_average(arr1: list[int | float], arr2: list[int | float]) -> list[float]:
+def pairwise_average(
+    arr1: list[int | float] | np.ndarray, arr2: list[int | float] | np.ndarray
+) -> np.ndarray:
+    """Compute element-wise average of two equal-length lists.
+
+    Used to average ERPs across two channels (e.g. PO7 and PO8)
+    to produce a combined bilateral measure.
+
+    Args:
+        arr1 (list[int | float]) | np.ndarray: First array of values.
+        arr2 (list[int | float]) | np.ndarray: Second array of values, must be
+            the same length as arr1.
+
+    Returns:
+        list[float]: Element-wise mean of arr1 and arr2.
+
+    Raises:
+        AssertionError: If the two lists have different lengths.
+    """
     assert len(arr1) == len(arr2)
 
     result: list[float] = []
     for i in range(0, len(arr1)):
         result.append((arr1[i] + arr2[i]) / 2)
-    return result
+    return np.array(result, dtype=np.float32)
 
 
 def pipeline_statistics(bids_root: str, config: int) -> None:
+    """Print summary statistics for a completed pipeline run.
+
+    Reads all per-subject metadata files and reports trial rejection
+    counts (overall, random, regular) and ICA component removal
+    statistics across all subjects.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset. The
+            processed outputs are expected under
+            ``<bids_root>/processed/<config>/``.
+        config (int): Numeric config identifier used to locate the
+            output subdirectory.
+    """
     processed_dir = f"{bids_root.rstrip('/')}/processed/{config}/"
     meta_files = sorted(glob(f"{processed_dir}sub-*_meta.txt"))
 

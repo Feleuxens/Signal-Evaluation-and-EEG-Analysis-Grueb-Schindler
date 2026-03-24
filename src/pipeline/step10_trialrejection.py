@@ -1,3 +1,12 @@
+"""Step 10: Amplitude-based trial (epoch) rejection.
+
+Rejects epochs whose peak-to-peak amplitude exceeds a threshold
+(likely artifact-contaminated) or falls below a minimum (likely
+flat/disconnected channels). Rejection is applied separately for
+EEG and EOG channel types, and statistics are logged per condition
+for quality reporting.
+"""
+
 from mne import Epochs
 
 from utils.config import StepTrialRejection
@@ -8,33 +17,34 @@ def reject_trials(
     config: StepTrialRejection,
     verbose=True,
 ) -> tuple[Epochs, dict]:
-    """
-    Reject epochs containing artifacts based on amplitude criteria.
+    """Reject epochs containing amplitude-based artifacts.
 
-    Parameters
-    ----------
-    epochs : mne.Epochs
-        The epochs object to clean.
-    eeg_threshold : float
-        Peak-to-peak amplitude threshold for EEG channels (in Volts).
-        Epochs exceeding this threshold will be rejected.
-        Default: 150e-6 (150 µV).
-    eog_threshold : float
-        Peak-to-peak amplitude threshold for EOG channels (in Volts).
-        Default: 250e-6 (250 µV).
-    flat_threshold : float
-        Minimum peak-to-peak amplitude (in Volts). Epochs with signals
-        flatter than this will be rejected (likely bad channels/disconnections).
-        Default: 1e-6 (1 µV).
-    verbose : bool
-        Whether to print rejection statistics.
+    Creates a copy of the epochs, applies peak-to-peak amplitude
+    thresholds and flat-signal detection, then computes rejection
+    statistics broken down by condition (random/regular).
 
-    Returns
-    -------
-    epochs_clean : mne.Epochs
-        Epochs with bad trials rejected.
-    reject_log : dict
-        Dictionary containing rejection statistics.
+    Args:
+        epochs (Epochs): Epoched EEG data containing "random" and
+            "regular" conditions. Not modified; a cleaned copy is
+            returned.
+        config (StepTrialRejection): Rejection parameters including
+            amplitude thresholds for EEG and EOG channels, and the
+            minimum amplitude for flat channel detection.
+        verbose (bool): Whether to print rejection statistics to
+            stdout. Defaults to True.
+
+    Returns:
+        tuple[Epochs, dict]: A tuple of:
+            - Cleaned epochs with bad trials dropped.
+            - Rejection log dictionary containing:
+                - n_epochs_before/after: Total epoch counts.
+                - n_epochs_regular/random_before: Per-condition counts.
+                - n_rejected, n_rejected_random, n_rejected_regular:
+                  Rejection counts overall and per condition.
+                - rejection_rate: Percentage of epochs rejected.
+                - reject_criteria, flat_criteria: Thresholds used.
+                - drop_log: MNE's per-epoch drop log (tuple of tuples
+                  listing the channels that caused each rejection).
     """
     n_epochs_before = len(epochs)
 
@@ -64,6 +74,7 @@ def reject_trials(
     n_rejected = n_epochs_before - n_epochs_after
     rejection_rate = (n_rejected / n_epochs_before) * 100 if n_epochs_before > 0 else 0
 
+    # Convert drop_log to serializable format for JSON export
     reject_log: dict = {
         "n_epochs_before": n_epochs_before,
         "n_epochs_after": n_epochs_after,
@@ -96,18 +107,22 @@ def reject_trials(
 
 
 def get_rejection_summary(reject_log: dict) -> dict[str, list | dict[str, list[int]]]:
-    """
-    Generate a detailed summary of which epochs were rejected and why.
+    """Generate a detailed breakdown of rejection reasons per epoch.
 
-    Parameters
-    ----------
-    reject_log : dict
-        The rejection log returned by reject_trials().
+    Parses MNE's drop_log to categorize each epoch as kept, rejected
+    by a specific channel (with the channel name), or user-rejected.
 
-    Returns
-    -------
-    summary : dict
-        Dictionary with rejection reasons and affected epoch indices.
+    Args:
+        reject_log (dict): Rejection log as returned by reject_trials().
+
+    Returns:
+        dict[str, list | dict[str, list[int]]]: Summary with keys:
+            - "kept" (list[int]): Indices of retained epochs.
+            - "rejected_by_channel" (dict[str, list[int]]): Mapping
+              of channel name to the epoch indices it caused to be
+              rejected.
+            - "user_rejected" (list[int]): Indices of epochs rejected
+              manually by the user (if any).
     """
     drop_log = reject_log["drop_log"]
 

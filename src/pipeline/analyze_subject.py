@@ -1,3 +1,10 @@
+"""Pipeline orchestration and high-level analysis functions.
+
+Contains the main pipeline runner that executes all preprocessing
+steps in sequence, as well as functions for generating per-subject
+and grand-average plots from processed data.
+"""
+
 from os import mkdir
 from os.path import isdir
 from mne.preprocessing import ICA
@@ -31,6 +38,21 @@ from utils.utils import pairwise_average, average_channel
 def run_pipeline(
     config: PipelineConfig, bids_root: str, config_id: int, subject_id: str
 ) -> None:
+    """Execute the full EEG preprocessing pipeline for a single subject.
+
+    Runs each enabled step in order: loading, bad channel detection,
+    filtering, downsampling, re-referencing, ASR, ICA, interpolation,
+    epoching, and trial rejection. Results are saved to disk as FIF
+    files and JSON metadata.
+
+    Args:
+        config (PipelineConfig): Configuration object controlling
+            which steps are enabled and their parameters.
+        bids_root (str): Root directory of the BIDS dataset.
+        config_id (int): Numeric config identifier, used to create
+            the output subdirectory (e.g. ``processed/1/``).
+        subject_id (str): Zero-padded subject identifier (e.g. "001").
+    """
     output_folder = f"{bids_root}/processed/{config_id}"
     if not isdir(output_folder):
         mkdir(output_folder)
@@ -97,6 +119,21 @@ def run_pipeline(
 def plot_specific_subject(
     config: PipelineConfig, data_folder: str, config_id: int, subject_id: str
 ) -> None:
+    """Generate diagnostic plots for a single processed subject.
+
+    Loads saved pipeline outputs and produces ERP plots (single
+    channel, all channels, butterfly), ICA topographies, and a
+    power spectral density plot.
+
+    Args:
+        config (PipelineConfig): Configuration object, used to
+            read the baseline window for ERP plots.
+        data_folder (str): Root directory containing per-config
+            output subdirectories (e.g. "data/processed").
+        config_id (int): Numeric config identifier used to locate
+            the output subdirectory.
+        subject_id (str): Zero-padded subject identifier (e.g. "001").
+    """
     epochs, raw, ica, pipeline_stats = read_data(data_folder, config_id, subject_id)
 
     output_folder = data_folder.rstrip("/") + "/" + str(config_id)
@@ -121,6 +158,21 @@ def plot_specific_subject(
 
 
 def plot_average_data(config: PipelineConfig, data_folder: str, config_id: int) -> None:
+    """Generate grand average ERP plots and topomaps across all subjects.
+
+    Loads all processed epoch files for the given config, computes
+    grand averages at PO7 and PO8, and produces three ERP plots
+    (PO7 alone, PO8 alone, PO7+PO8 averaged) plus a difference-wave
+    topomap.
+
+    Args:
+        config (PipelineConfig): Configuration object. Currently
+            unused but passed for consistency and future extensions.
+        data_folder (str): Root directory containing per-config
+            output subdirectories (e.g. "data/processed").
+        config_id (int): Numeric config identifier used to locate
+            the output subdirectory.
+    """
     output_folder = data_folder.rstrip("/") + "/" + str(config_id)
 
     epochs_dict = read_all_files_per_type(data_folder, config_id, "epo")

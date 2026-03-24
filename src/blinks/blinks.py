@@ -1,3 +1,12 @@
+"""Blink detection and blink-conditioned epoch analysis.
+
+Implements automatic blink detection on EOG channels using a
+threshold-based algorithm, and provides utilities to split epochs
+into blink-present and blink-absent subsets. This module supports
+the investigation of how ASR artifact correction interacts with
+blink-contaminated epochs (see Section 5 of the report).
+"""
+
 from mne_bids import BIDSPath
 import mne
 from mne.io.edf.edf import RawEDF
@@ -24,11 +33,22 @@ from blinks.files import save_blink_epochs
 def epochs_have_blinks(
     epochs: mne.Epochs, blink_intervals
 ) -> np.typing.NDArray[np.bool]:
-    """
-    Return a boolean numpy array of length n_epochs where True means the epoch
-    overlaps at least one blink interval.
-    epochs: mne.Epochs
-    blink_intervals: list of (start_s, end_s) in absolute seconds (same reference as epochs.events)
+    """Check which epochs overlap with detected blink intervals.
+
+    For each epoch, determines whether its time window overlaps with
+    any blink interval. Both epochs and blink intervals are compared
+    in absolute time (seconds from recording start).
+
+    Args:
+        epochs (Epochs): Epoched EEG data. Event sample indices and
+            epoch tmin/tmax are used to compute absolute time windows.
+        blink_intervals (list[tuple[float, float]]): List of
+            (start_seconds, end_seconds) pairs defining each detected
+            blink in absolute recording time.
+
+    Returns:
+        NDArray[np.bool_]: Boolean array of shape (n_epochs,) where
+            True indicates the epoch overlaps at least one blink.
     """
     sfreq = epochs.info["sfreq"]
     event_samples = epochs.events[:, 0]
@@ -58,18 +78,45 @@ def detect_blinks_on_raw(
     mad_mult=6.0,
     min_distance_s=0.05,
     merge_gap_s=0.02,
-):
-    """
-    Detect blink intervals on raw — one interval per blink:
-      - bandpass EOG channels
-      - build smoothed envelope = max(abs(channels))
-      - threshold via median + mad_mult*MAD to find candidate peaks
-      - for each candidate peak expand left/right until envelope <= baseline_level
-        (baseline_level = median + 0.5 * MAD), which avoids splitting rise/fall into multiple blinks
-      - merge overlapping/nearby intervals
+) -> tuple[list[tuple[float, float]], np.ndarray]:
+    """Detect blink intervals on raw EOG data.
+
+    Uses a multistep algorithm:
+    1. Bandpass filter EOG channels to isolate blink frequency range.
+    2. Compute a smoothed amplitude envelope (max absolute value
+       across EOG channels).
+    3. Apply a robust threshold (median + mad_mult * MAD) to find
+       candidate blink peaks.
+    4. Expand each peak bidirectionally until the envelope falls
+       below a baseline level (median + 0.5 * MAD).
+    5. Merge overlapping or nearby intervals.
+
+    Args:
+        raw (RawEDF): Continuous EEG data containing EOG channels.
+        eog_chs (list[str]): Names of EOG channels to use for
+            detection (e.g. ["EOG5", "EOG6"]).
+        l_freq (float): Lower bandpass frequency in Hz for EOG
+            filtering. Defaults to 1.0.
+        h_freq (float): Upper bandpass frequency in Hz for EOG
+            filtering. Defaults to 15.0.
+        envelope_smooth_ms (float): Smoothing window width in
+            milliseconds for the amplitude envelope. Defaults to 20.0.
+        mad_mult (float): Multiplier for the MAD-based peak detection
+            threshold. Higher values detect fewer, more prominent
+            blinks. Defaults to 6.0.
+        min_distance_s (float): Minimum distance in seconds between
+            detected peaks, passed to scipy's find_peaks. Defaults
+            to 0.05.
+        merge_gap_s (float): Maximum gap in seconds between adjacent
+            intervals before they are merged into a single blink.
+            Defaults to 0.02.
+
     Returns:
-      intervals: list of (start_s, end_s)
-      durations: np.array of durations (s)
+        tuple[list[tuple[float, float]], np.ndarray]: A tuple of:
+            - List of (start_seconds, end_seconds) blink intervals
+              in absolute recording time, sorted chronologically.
+            - Array of blink durations in seconds, shape (n_blinks,).
+              Empty array if no blinks were detected.
     """
 
     sfreq = raw.info["sfreq"]
@@ -134,7 +181,23 @@ def detect_blinks_on_raw(
 
 def precompute_all_epochs(
     bids_root: str, config: PipelineConfig, output_folder: str, with_asr: bool
-):
+) -> None:
+    """Run the pipeline and blink detection for all subjects, saving results.
+
+    For each subject, runs the preprocessing pipeline (with and without
+    ASR), detects blinks on the EOG channels, splits epochs into
+    blink-present and blink-absent subsets, and saves both to disk.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+        config (PipelineConfig): Pipeline configuration used for
+            all preprocessing steps.
+        output_folder (str): Directory to save blink-labelled epoch
+            files into.
+        with_asr (bool): If True, use epochs from the ASR-enabled
+            pipeline branch. If False, use epochs from the branch
+            without ASR.
+    """
 
     subject_ids = get_subject_list(bids_root)
 
@@ -174,6 +237,23 @@ def precompute_all_epochs(
 def filter_blinks(
     epochs: Epochs, has_blink: np.typing.NDArray[np.bool]
 ) -> tuple[Epochs, Epochs]:
+    """Split epochs into blink-present and blink-absent subsets.
+
+    Args:
+        epochs (Epochs): Full set of epochs to split.
+        has_blink (NDArray[np.bool_]): Boolean array of shape
+            (n_epochs,) indicating which epochs contain blinks,
+            as returned by epochs_have_blinks().
+
+    Returns:
+        tuple[Epochs, Epochs]: A tuple of:
+            - Epochs that overlap with at least one blink.
+            - Epochs with no detected blinks.
+
+    Raises:
+        ValueError: If has_blink is not a 1D boolean array matching
+            the number of epochs.
+    """
     if has_blink.ndim != 1 or has_blink.shape[0] != len(epochs):
         raise ValueError("filter must be a 1D boolean array with length == len(epochs)")
 
@@ -187,10 +267,25 @@ def filter_blinks(
 def process_subject_with_blinkdetection(
     bids_root: str, subject_id: str, config: PipelineConfig
 ) -> tuple[Epochs, Epochs, RawEDF]:
-    """
-    computes all epochs once with ASR and once without.
-    First Epochs are with ASR,
-    Second Epochs are without ASR
+    """Run the preprocessing pipeline twice for one subject: with and without ASR.
+
+    Executes shared steps (loading through re-referencing) once, then
+    forks the data into two branches: one with ASR enabled and one
+    without. Both branches then proceed through ICA, interpolation,
+    and epoching independently.
+
+    Args:
+        bids_root (str): Root directory of the BIDS dataset.
+        subject_id (str): Zero-padded subject identifier (e.g. "001").
+        config (PipelineConfig): Pipeline configuration controlling
+            which steps are enabled and their parameters.
+
+    Returns:
+        tuple[Epochs, Epochs, RawEDF]: A tuple of:
+            - Epochs from the pipeline branch with ASR.
+            - Epochs from the pipeline branch without ASR.
+            - Raw data after ASR (used for blink detection on
+              the processed EOG channels).
     """
     bids_path = BIDSPath(
         subject=subject_id,
@@ -219,6 +314,7 @@ def process_subject_with_blinkdetection(
         print(f"\nStep 05: Rereferencing")
         raw = rereference_data(raw, config.rereferencing)
 
+    # Fork into two branches: with ASR and without ASR
     raw_before = raw.copy()
     raw_after = raw
 
@@ -240,4 +336,4 @@ def process_subject_with_blinkdetection(
     epochs_after, _, _ = epoch_data(raw_after, bids_path, config.epoching)
     epochs_before, _, _ = epoch_data(raw_before, bids_path, config.epoching)
 
-    return (epochs_after, epochs_before, raw_after)
+    return epochs_after, epochs_before, raw_after
