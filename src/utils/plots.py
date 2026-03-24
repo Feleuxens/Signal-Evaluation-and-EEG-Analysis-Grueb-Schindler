@@ -203,7 +203,7 @@ def butterfly_plot(output_file, epochs):
 
     # Butterfly plot for evoked difference or single condition
     figure: Figure = evoked_random.plot(
-        spatial_colors=False, # pyright: ignore[reportArgumentType]
+        spatial_colors=False,  # pyright: ignore[reportArgumentType]
         show=False,
         time_unit="s",
         titles=f"Butterfly — Random",
@@ -211,13 +211,13 @@ def butterfly_plot(output_file, epochs):
     figure.savefig(output_file + "_random.png", bbox_inches="tight")
     # Alternatively plot difference
     evoked_diff = mne.combine_evoked([evoked_random, evoked_regular], weights=[1, -1])
-    figure: Figure = evoked_diff.plot(
+    figure2: Figure = evoked_diff.plot(
         spatial_colors=False,
         show=False,
         time_unit="s",
         titles=f"Butterfly — Random-Regular diff",
     )
-    figure.savefig(output_file + "_combined.png", bbox_inches="tight")
+    figure2.savefig(output_file + "_combined.png", bbox_inches="tight")
 
 
 def plot_channel(
@@ -247,7 +247,7 @@ def plot_channel(
 def plot_topomap(output_file, evoked_diff: Evoked):
     evoked_diff = evoked_diff.copy().drop_channels(
         [c for c in evoked_diff.ch_names if c.startswith("EXG")]
-    ) # pyright: ignore[reportAssignmentType]
+    )  # pyright: ignore[reportAssignmentType]
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), constrained_layout=True)
 
@@ -259,7 +259,7 @@ def plot_topomap(output_file, evoked_diff: Evoked):
 
     for ax, (title, (tmin, tmax)) in zip(axes, time_windows.items()):
         evoked_diff.plot_topomap(
-            times=[(tmin + tmax) / 2], # pyright: ignore[reportArgumentType]
+            times=[(tmin + tmax) / 2],  # pyright: ignore[reportArgumentType]
             average=tmax - tmin,
             axes=ax,
             show=False,

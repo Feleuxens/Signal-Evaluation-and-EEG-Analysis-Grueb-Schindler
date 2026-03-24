@@ -20,14 +20,17 @@ from utils.utils import get_subject_list
 
 from blinks.files import save_blink_epochs
 
-def epochs_have_blinks(epochs: mne.Epochs, blink_intervals) -> np.typing.NDArray[np.bool] :
+
+def epochs_have_blinks(
+    epochs: mne.Epochs, blink_intervals
+) -> np.typing.NDArray[np.bool]:
     """
     Return a boolean numpy array of length n_epochs where True means the epoch
     overlaps at least one blink interval.
     epochs: mne.Epochs
     blink_intervals: list of (start_s, end_s) in absolute seconds (same reference as epochs.events)
     """
-    sfreq = epochs.info['sfreq']
+    sfreq = epochs.info["sfreq"]
     event_samples = epochs.events[:, 0]
     epoch_start_times = event_samples / sfreq + epochs.tmin
     epoch_duration = epochs.times[-1] - epochs.times[0]
@@ -37,9 +40,9 @@ def epochs_have_blinks(epochs: mne.Epochs, blink_intervals) -> np.typing.NDArray
     if not blink_intervals:
         return has_blink
 
-    bi = np.array(blink_intervals)  
+    bi = np.array(blink_intervals)
     for i, (s0, e0) in enumerate(zip(epoch_start_times, epoch_end_times)):
-        overlaps = np.logical_not((bi[:,1] <= s0) | (bi[:,0] >= e0))
+        overlaps = np.logical_not((bi[:, 1] <= s0) | (bi[:, 0] >= e0))
         if overlaps.any():
             has_blink[i] = True
 
@@ -55,7 +58,7 @@ def detect_blinks_on_raw(
     mad_mult=6.0,
     min_distance_s=0.05,
     merge_gap_s=0.02,
-) :
+):
     """
     Detect blink intervals on raw — one interval per blink:
       - bandpass EOG channels
@@ -69,13 +72,13 @@ def detect_blinks_on_raw(
       durations: np.array of durations (s)
     """
 
-    sfreq = raw.info['sfreq']
+    sfreq = raw.info["sfreq"]
     eog_idx = mne.pick_channels(raw.ch_names, include=eog_chs)
     eog_data = raw.get_data(picks=eog_idx)
 
     # Bandpass filter for blink detection
     eog_filtered = mne.filter.filter_data(
-        eog_data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, method='iir', verbose=False
+        eog_data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, method="iir", verbose=False
     )
 
     # envelope: max absolute across eog channels
@@ -85,7 +88,7 @@ def detect_blinks_on_raw(
     win = int(round(envelope_smooth_ms * 1e-3 * sfreq))
     win = max(1, win)
     kernel = np.ones(win) / win
-    env_smooth = np.convolve(env, kernel, mode='same')
+    env_smooth = np.convolve(env, kernel, mode="same")
 
     # robust baseline & threshold
     med = np.median(env_smooth)
@@ -107,7 +110,7 @@ def detect_blinks_on_raw(
             e += 1
         intervals.append((max(0, s), min(n - 1, e)))
 
-    # convert to seconds 
+    # convert to seconds
     intervals_s = [(s / sfreq, e / sfreq) for s, e in intervals]
     if not intervals_s:
         return [], np.array([])
@@ -128,38 +131,49 @@ def detect_blinks_on_raw(
 
     return merged, durations
 
-def precompute_all_epochs(bids_root: str, config: PipelineConfig, output_folder: str, with_asr: bool):
+
+def precompute_all_epochs(
+    bids_root: str, config: PipelineConfig, output_folder: str, with_asr: bool
+):
 
     subject_ids = get_subject_list(bids_root)
 
     for i, subject_id in enumerate(subject_ids):
 
-        epochs_after, epochs_before, raw_after = process_subject_with_blinkdetection(bids_root, subject_id, config)
+        epochs_after, epochs_before, raw_after = process_subject_with_blinkdetection(
+            bids_root, subject_id, config
+        )
 
         epochs = epochs_after if with_asr else epochs_before
 
         # eeg_chs = ['PO7','PO8']
-        eog_chs = ['EOG5','EOG6']
+        eog_chs = ["EOG5", "EOG6"]
 
         blink_intervals, _ = detect_blinks_on_raw(
             raw_after,
             eog_chs=eog_chs,
-            l_freq=1.0, h_freq=15.0,
+            l_freq=1.0,
+            h_freq=15.0,
             envelope_smooth_ms=20.0,
-            mad_mult=6.0
+            mad_mult=6.0,
         )
 
         has_blink = epochs_have_blinks(epochs, blink_intervals)
 
         epochs_with_blinks, epochs_without_blinks = filter_blinks(epochs, has_blink)
 
-        save_blink_epochs(output_folder, subject_id, epochs_with_blinks, epochs_without_blinks, with_asr)
+        save_blink_epochs(
+            output_folder,
+            subject_id,
+            epochs_with_blinks,
+            epochs_without_blinks,
+            with_asr,
+        )
 
 
-
-
-
-def filter_blinks(epochs: Epochs, has_blink: np.typing.NDArray[np.bool]) -> tuple[Epochs, Epochs]:
+def filter_blinks(
+    epochs: Epochs, has_blink: np.typing.NDArray[np.bool]
+) -> tuple[Epochs, Epochs]:
     if has_blink.ndim != 1 or has_blink.shape[0] != len(epochs):
         raise ValueError("filter must be a 1D boolean array with length == len(epochs)")
 
@@ -170,7 +184,9 @@ def filter_blinks(epochs: Epochs, has_blink: np.typing.NDArray[np.bool]) -> tupl
     return (epochs_with_blink, epochs_without_blink)
 
 
-def process_subject_with_blinkdetection(bids_root: str, subject_id: str, config: PipelineConfig) -> tuple[Epochs, Epochs, RawEDF]:
+def process_subject_with_blinkdetection(
+    bids_root: str, subject_id: str, config: PipelineConfig
+) -> tuple[Epochs, Epochs, RawEDF]:
     """
     computes all epochs once with ASR and once without.
     First Epochs are with ASR,
@@ -225,5 +241,3 @@ def process_subject_with_blinkdetection(bids_root: str, subject_id: str, config:
     epochs_before, _, _ = epoch_data(raw_before, bids_path, config.epoching)
 
     return (epochs_after, epochs_before, raw_after)
-
-

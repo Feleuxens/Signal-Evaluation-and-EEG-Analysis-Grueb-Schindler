@@ -15,7 +15,7 @@ def save_data(
     raw: RawEDF,
     ica: ICA | None,
     pipeline_stats: dict | None,
-):
+) -> None:
     epochs.save(f"{output_folder}/sub-{subject_id}_epo.fif", overwrite=True)
     raw.save(f"{output_folder}/sub-{subject_id}_raw.fif", overwrite=True)
     if ica is not None:
@@ -48,12 +48,12 @@ def read_data(
         with open(f"{path}/sub-{subject_id}_meta.txt", "r") as f:
             pipeline_stats = loads(f.read())
 
-    return epochs, raw, ica, pipeline_stats  # pyright: ignore[reportReturnType]
+    return epochs, raw, ica, pipeline_stats
 
 
 def read_all_files_per_type(
     data_folder: str, config_id: int, file_type: str
-) -> dict[int, Epochs]:
+) -> dict[str, Epochs]:
     path = f"{data_folder}/{config_id}"
     if not isdir(path):
         raise FileNotFoundError(f"{data_folder}/{config_id} is not a directory")

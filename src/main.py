@@ -14,7 +14,8 @@ from pipeline.analyze_subject import (
 from utils.utils import (
     get_subject_list,
     get_config_ids,
-    get_config_path, pipeline_statistics,
+    get_config_path,
+    pipeline_statistics,
 )
 from utils.config import load_config
 
@@ -65,10 +66,7 @@ def main():
         print(f"\nElapsed time: {total_time} seconds\n")
     elif i.lower() == "4":
         s = f"{int(input("Subject ID: ")):03d}"
-        tasks = [
-            (get_config_path(config_root, c), bids_root, c, s)
-            for c in configs
-        ]
+        tasks = [(get_config_path(config_root, c), bids_root, c, s) for c in configs]
     elif i.lower() == "5":
         c = int(input("Config ID: "))
         config = load_config(get_config_path(config_root, c))
@@ -106,10 +104,7 @@ def run_parallel(tasks: list[tuple[str, str, int, str]]):
     start_time = time()
 
     with ProcessPoolExecutor(max_workers=int(getenv("MAX_WORKERS", 2))) as executor:
-        futures = {
-            executor.submit(process_subject, *task): task
-            for task in tasks
-        }
+        futures = {executor.submit(process_subject, *task): task for task in tasks}
 
         for future in as_completed(futures):
             subject_id, config_id, error = future.result()
@@ -119,8 +114,9 @@ def run_parallel(tasks: list[tuple[str, str, int, str]]):
                 print(f"DONE   config={config_id} subject={subject_id}")
 
     total_time = time() - start_time
-    print(f"\nElapsed time: {total_time:.1f}s ({len(tasks)} jobs, {int(getenv("MAX_WORKERS", 2))} workers)\n")
-
+    print(
+        f"\nElapsed time: {total_time:.1f}s ({len(tasks)} jobs, {int(getenv("MAX_WORKERS", 2))} workers)\n"
+    )
 
 
 if __name__ == "__main__":

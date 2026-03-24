@@ -30,7 +30,7 @@ from utils.utils import pairwise_average, average_channel
 
 def run_pipeline(
     config: PipelineConfig, bids_root: str, config_id: int, subject_id: str
-):
+) -> None:
     output_folder = f"{bids_root}/processed/{config_id}"
     if not isdir(output_folder):
         mkdir(output_folder)
@@ -96,7 +96,7 @@ def run_pipeline(
 
 def plot_specific_subject(
     config: PipelineConfig, data_folder: str, config_id: int, subject_id: str
-):
+) -> None:
     epochs, raw, ica, pipeline_stats = read_data(data_folder, config_id, subject_id)
 
     output_folder = data_folder.rstrip("/") + "/" + str(config_id)
@@ -120,7 +120,7 @@ def plot_specific_subject(
     power_spectral_density_plot(f"{output_folder}/sub-{subject_id}_psd.png", raw, 0, 64)
 
 
-def plot_average_data(config: PipelineConfig, data_folder: str, config_id: int):
+def plot_average_data(config: PipelineConfig, data_folder: str, config_id: int) -> None:
     output_folder = data_folder.rstrip("/") + "/" + str(config_id)
 
     epochs_dict = read_all_files_per_type(data_folder, config_id, "epo")

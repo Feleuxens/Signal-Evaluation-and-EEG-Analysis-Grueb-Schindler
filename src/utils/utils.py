@@ -7,7 +7,7 @@ from os.path import exists, join
 import mne
 import mne_bids
 import numpy as np
-from mne import read_epochs, Epochs
+from mne import Epochs, Evoked
 
 
 def get_subject_list(bids_root) -> list[str]:
@@ -52,17 +52,19 @@ def evoke_channels(epochs: Epochs) -> tuple[mne.EvokedArray, mne.EvokedArray]:
     evoked_random = epochs_random.average()
     evoked_regular = epochs_regular.average()
 
-    return evoked_random, evoked_regular # pyright: ignore[reportReturnType]
+    return evoked_random, evoked_regular
 
 
-def average_channel(channel, epochs_dict: dict[int, Epochs]):
+def average_channel(
+    channel, epochs_dict: dict[str, Epochs]
+) -> tuple[list[float], list[float], int, int, Evoked]:
     """
     Load all processed epoch files and compute the grand average for channel PO7,
     separately for random and regular conditions
     """
 
-    evokeds_random = []
-    evokeds_regular = []
+    evokeds_random: list[int] = []
+    evokeds_regular: list[int] = []
     evoked_diff = None
     times = None
 
@@ -90,16 +92,22 @@ def average_channel(channel, epochs_dict: dict[int, Epochs]):
 
         times = evoked_random.times  # Same for all subjects
 
-    if not evokeds_random or not evokeds_regular or not evoked_diff or times is None or len(times) == 0 :
+    if (
+        not evokeds_random
+        or not evokeds_regular
+        or not evoked_diff
+        or times is None
+        or len(times) == 0
+    ):
         raise RuntimeError(f"No valid subjects with {channel} channel found.")
 
     # Stack and compute mean across subjects
     n_subjects = len(evokeds_random)
-    evokeds_random = np.array(evokeds_random)  # shape: (n_subjects, n_times)
-    evokeds_regular = np.array(evokeds_regular)
+    evokeds_random_arr = np.array(evokeds_random)  # shape: (n_subjects, n_times)
+    evokeds_regular_arr = np.array(evokeds_regular)
 
-    data_random = np.mean(evokeds_random, axis=0) * 1e6  # Convert to µV
-    data_regular = np.mean(evokeds_regular, axis=0) * 1e6
+    data_random = np.mean(evokeds_random_arr, axis=0) * 1e6  # Convert to µV
+    data_regular = np.mean(evokeds_regular_arr, axis=0) * 1e6
 
     print(f"\nGrand average computed from {n_subjects} subject(s)")
     print(f"  Time range: {times[0]:.3f} to {times[-1]:.3f} s")
@@ -108,16 +116,16 @@ def average_channel(channel, epochs_dict: dict[int, Epochs]):
     return data_random, data_regular, times, n_subjects, evoked_diff
 
 
-def pairwise_average(arr1, arr2):
+def pairwise_average(arr1: list[int | float], arr2: list[int | float]) -> list[float]:
     assert len(arr1) == len(arr2)
 
-    result = []
+    result: list[float] = []
     for i in range(0, len(arr1)):
         result.append((arr1[i] + arr2[i]) / 2)
     return result
 
 
-def pipeline_statistics(bids_root: str, config: int):
+def pipeline_statistics(bids_root: str, config: int) -> None:
     processed_dir = f"{bids_root.rstrip('/')}/processed/{config}/"
     meta_files = sorted(glob(f"{processed_dir}sub-*_meta.txt"))
 

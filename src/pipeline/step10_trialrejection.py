@@ -95,7 +95,7 @@ def reject_trials(
     return epochs_clean, reject_log
 
 
-def get_rejection_summary(reject_log):
+def get_rejection_summary(reject_log: dict) -> dict[str, list | dict[str, list[int]]]:
     """
     Generate a detailed summary of which epochs were rejected and why.
 
@@ -111,7 +111,7 @@ def get_rejection_summary(reject_log):
     """
     drop_log = reject_log["drop_log"]
 
-    summary = {
+    summary: dict[str, list | dict[str, list[int]]] = {
         "kept": [],
         "rejected_by_channel": {},
         "user_rejected": [],
@@ -119,8 +119,10 @@ def get_rejection_summary(reject_log):
 
     for idx, reasons in enumerate(drop_log):
         if len(reasons) == 0:
+            assert isinstance(summary["kept"], list)
             summary["kept"].append(idx)
         elif reasons == ("USER",):
+            assert isinstance(summary["user_rejected"], list)
             summary["user_rejected"].append(idx)
         else:
             for channel in reasons:

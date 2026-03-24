@@ -29,7 +29,7 @@ def epoch_data(
     return epochs, events, event_dict
 
 
-def _load_and_attach_annotations(bids_path, raw):
+def _load_and_attach_annotations(bids_path: BIDSPath, raw: RawEDF) -> RawEDF:
     """Load events from BIDS *events.tsv file and attach as annotations to raw."""
     annotations = _load_events_from_bids(bids_path)
     raw.set_annotations(annotations)
@@ -39,7 +39,7 @@ def _load_and_attach_annotations(bids_path, raw):
     return raw
 
 
-def _load_events_from_bids(bids_path):
+def _load_events_from_bids(bids_path: BIDSPath):
     """Load events from BIDS *events.tsv file."""
     events_tsv = bids_path.copy().update(suffix="events", extension=".tsv").fpath
     df = pd.read_csv(events_tsv, sep="\t")

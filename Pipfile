@@ -15,6 +15,14 @@ pyqt6 = "*"
 asrpy = "0.0.8"
 
 [dev-packages]
+black = "*"
+mypy = "*"
+pandas-stubs = "~=2.3"
+scipy-stubs = "*"
+types-defusedxml = "*"
+types-openpyxl = "*"
+types-python-dateutil = "*"
+types-xlrd = "*"
 
 [requires]
 python_version = "3.13"
