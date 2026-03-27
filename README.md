@@ -1,5 +1,7 @@
 # Signal processing and Analysis of human brain potentials (EEG)
 
+[Report](https://github.com/Feleuxens/Signal-Evaluation-and-EEG-Analysis-Grueb-Schindler/blob/main/Signal-Evaluation-Report-Grueb-Schindler.pdf)
+
 **Lynx-Lab-Rats**
 
 Felix Grüb 3530441 st172408@stud.uni-stuttgart.de
